@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Explorador de Cidades - GeoDB</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div>
+        <div class="container">
+            <h1>Cidades do Mundo</h1>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Id</th>
+                            <th>Cidade</th>
+                            <th>País</th>
+                            <th>População</th>
+                            <th>Escolha</th>
+
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                    </tbody>
+                </table>
+
+                <div id="loader" class="hidden">Carregando...</div>
+            </div>
+            <div class="pagination">
+                <button id="prev-btn" class="btn">Anterior</button>
+                <span id="page-info">Página: 1</span>
+                <button id="next-btn" class="btn">Próxima</button>
+            </div>
+        </div>
+        <div class="cont-choice">
+            <button id="choice-btn" class="btn">Visualizar Cidades</button>
+        </div>
+
+        <div id="window-confirm" class="modal">
+            <div class="window-content">
+                <span class="close">&times;</span>
+                <p>Você irá confirmar essas cidades:</p>
+                <p id="cities"></p>
+            </div>
+        </div>
+
+        <div class="k-means-control">
+            <label for="k-value">Número de Grupos (K):</label>
+            <input type="number" id="k-value" value="3" min="1">
+            <div class="kmeans-buttons">
+                <button id="run-kmeans-api" class="btn">K-Means com API</button>
+                <button id="run-kmeans-json" class="btn">K-Means com JSON</button>
+            </div>
+        </div>
+
+        <div id="kmeans-results" class="results-container"></div>
+
+    </div>
+
+
+    <script src="main.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "tabulator-tables": "^6.3.1",
+    "wft-geodb-js-client": "^2.0.3"
+  }
+}
