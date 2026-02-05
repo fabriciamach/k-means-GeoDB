@@ -8,7 +8,7 @@ const CONFIG = {
     RETRY_429_EXTRA_MS: 1500,
     API_WORKERS: Math.max(2, Math.min(4, navigator.hardwareConcurrency || 4)),
     HEADERS: {
-        'x-rapidapi-key': '84f2b6dbefmsh8b88596229c9484p18e939jsn52dd16ff94a3',
+        'x-rapidapi-key': 'c378b7030fmsha3da3c2e2489efdp1c3c9ajsneb6338e3e930',
         'x-rapidapi-host': 'wft-geo-db.p.rapidapi.com'
     }
 };
@@ -398,6 +398,62 @@ const runParallelKMeans = (k, listaCidades) => {
     iterate(centroids, 1);
 };
 
+//Função para buscar cidades da API e salvar em JSON local, 
+// é opcional para ver como fiz mas não é útil para usar como está atualmente, uma vez que já fiz o processo
+const fetchAndSaveCitiesToJson = async () => {
+    const apiEndpoint = CONFIG.URL;
+    const headers = CONFIG.HEADERS;
+    const limit = CONFIG.LIMIT; // Número de cidades por requisição
+    const maxRequests = 10; // Limite de requisições para evitar sobrecarga
+
+    let allCities = [];
+    let currentPage = 0;
+
+    try {
+        while (currentPage < maxRequests) {
+            const offset = currentPage * limit;
+            const url = `${apiEndpoint}?offset=${offset}&limit=${limit}&sort=%2Bname`;
+
+            console.log(`Buscando cidades na página ${currentPage + 1}...`);
+
+            const response = await fetch(url, { headers });
+
+            if (!response.ok) {
+                console.error(`Erro ao buscar cidades: ${response.statusText}`);
+                break;
+            }
+
+            const data = await response.json();
+            if (data.data && data.data.length > 0) {
+                allCities = allCities.concat(data.data);
+            } else {
+                console.log('Nenhuma cidade retornada pela API.');
+                break;
+            }
+
+            currentPage++;
+            await new Promise(resolve => setTimeout(resolve, CONFIG.RATE_LIMIT_MS)); // Respeitar limite de requisição
+        }
+
+        console.log(`Total de cidades buscadas: ${allCities.length}`);
+
+        // Salvar no JSON
+        const blob = new Blob([JSON.stringify(allCities, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'cidades.json';
+        a.click();
+
+        URL.revokeObjectURL(url);
+        console.log('Arquivo cidades.json salvo com sucesso!');
+    } catch (error) {
+        console.error('Erro ao buscar ou salvar cidades:', error);
+    }
+};
+
+
 // --- EVENTOS ---
 document.getElementById('next-btn')?.addEventListener('click', () => updateApp(state.currentPage + 1));
 document.getElementById('prev-btn')?.addEventListener('click', () => updateApp(state.currentPage - 1));
@@ -420,5 +476,10 @@ document.getElementById('run-kmeans-json')?.addEventListener('click', () => {
 
 document.querySelector(".close")?.addEventListener('click', () => modal.style.display = "none");
 window.onclick = (event) => { if (event.target == modal) modal.style.display = "none"; };
+
+document.getElementById('fetch-save-btn')?.addEventListener('click', () => {
+    console.log("Iniciando processo de busca e salvamento...");
+    fetchAndSaveCitiesToJson(); 
+});
 
 updateApp(0);
