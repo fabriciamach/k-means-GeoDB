@@ -1,0 +1,10 @@
+services:
+  paradigmas-app:
+    build: .
+    image: nginx:alpine
+    container_name: paradigmas
+    ports:
+      - "8080:80"
+    volumes:
+      - ./src:/usr/share/nginx/html
+    restart: always
