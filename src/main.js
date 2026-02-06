@@ -32,8 +32,8 @@ const calculateDistance = (city, centroid) => {
     return Math.sqrt(latDiff * latDiff + lonDiff * lonDiff + popDiff * popDiff);
 };
 
-// Ordenação por nome 
-const buildUrl = (page) => `${CONFIG.URL}?offset=${page * CONFIG.LIMIT}&limit=${CONFIG.LIMIT}&sort=%2Bname`;
+// Ordenação por população decrescente
+const buildUrl = (page) => `${CONFIG.URL}?offset=${page * CONFIG.LIMIT}&limit=${CONFIG.LIMIT}&sort=-population`;
 
 const formatPopulation = (num) => {
     if (!num && num !== 0) return "0";
@@ -65,6 +65,7 @@ const renderTable = (cities) => {
     if (!tbody) return;
     const cityList = cities || [];
     tbody.innerHTML = cityList.map(city => {
+        // Verifica se a cidade já está no array de selecionadas para manter o check ao mudar de página
         const isSelected = state.selectedCities.some(c => String(c.id) === String(city.id));
         return `
             <tr>
@@ -72,7 +73,14 @@ const renderTable = (cities) => {
                 <td>${city.city}</td>
                 <td>${city.country}</td>
                 <td>${formatPopulation(city.population)}</td>
-                <td><input type="checkbox" class="city-checkbox" data-id="${city.id}" data-name="${city.city}" ${isSelected ? 'checked' : ''}/></td>
+                <td><input type="checkbox" class="city-checkbox" 
+                    data-id="${city.id}" 
+                    data-name="${city.city}" 
+                    data-country="${city.country}"
+                    data-lat="${city.latitude || city.lat}"
+                    data-lon="${city.longitude || city.lon}"
+                    data-pop="${city.population}"
+                    ${isSelected ? 'checked' : ''}/></td>
             </tr>`;
     }).join('');
 };
@@ -149,6 +157,7 @@ const processAndRun = (k, cidades) => {
     runParallelKMeans(k, cidades);
 };
 
+//Simulação de busca via API com Workers, com 50 cidades apenas para demonstração.
 const loadCitiesFromApi = (k) => {
     console.log("Iniciando busca via API (1 RPS)...");
     listaParaCache = [];
@@ -280,84 +289,19 @@ const seedCentroidsFromData = (k) => {
 const runParallelKMeans = (k, listaCidades) => {
     const numWorkers = 4;
     const chunk = Math.floor(currentTotalCities / numWorkers);
+    const MAX_ITERATIONS = 20;
+    const CONVERGENCE_THRESHOLD = 0.0001;
 
     let centroids = seedCentroidsFromData(k);
+    let totalInertia = 0;
 
     const iterate = (currentCentroids, iteration) => {
-        if (iteration > 10) {
-            toggleLoader(false);
-            setButtonsDisabled(false);
-            console.log("=== RESULTADO DO AGRUPAMENTO ===");
-            const cityGroups = Array.from({ length: k }, () => []);
-            const dataView = new Float64Array(sharedBuffer);
-
-            for (let i = 0; i < currentTotalCities; i++) {
-                const base = i * 3;
-                const lat = dataView[base];
-                const lon = dataView[base + 1];
-                const pop = dataView[base + 2];
-
-                if (lat === 0 && lon === 0) continue;
-
-                // Objeto temporário para calcular distância
-                const cityObj = { lat, lon, pop };
-
-                let minDist = Infinity;
-                let groupIdx = 0;
-
-                currentCentroids.forEach((c, idx) => {
-                    // LAT + LON + POP
-                    const d = calculateDistance(cityObj, c);
-                    if (d < minDist) { minDist = d; groupIdx = idx; }
-                });
-
-                // Pega o nome correto da cidade do array global
-                const cidadeInfo = window.cidadesCarregadas && window.cidadesCarregadas[i];
-                const nome = cidadeInfo ? (cidadeInfo.city || cidadeInfo.name) : `Cidade #${i}`;
-                cityGroups[groupIdx].push(nome);
-            }
-
-            // Exibe no console as cidades de cada cluster
-            console.log("\n===== CIDADES POR CLUSTER K-MEANS =====");
-            cityGroups.forEach((group, i) => {
-                console.log(`\nCLUSTER ${i + 1} (${group.length} cidades):`);
-                console.log(group.join(', '));
-            });
-            console.log("\n=========================================\n");
-
-            // Renderiza no HTML
-            const resultsDiv = document.getElementById('kmeans-results');
-            if (resultsDiv) {
-                let html = '<h2>Resultados do Agrupamento (K-Means)</h2>';
-                cityGroups.forEach((group, i) => {
-                    html += `
-                        <div class="group-result">
-                            <h3>Grupo ${i + 1} <small>(${group.length} cidades)</small></h3>
-                            <div class="group-list">
-                                ${group.slice(0, 50).join(', ')} 
-                                ${group.length > 50 ? `... e mais ${group.length - 50}` : ''}
-                            </div>
-                        </div>
-                    `;
-                });
-                resultsDiv.innerHTML = html;
-                resultsDiv.scrollIntoView({ behavior: 'smooth' });
-            }
-
-            console.log("Agrupamento finalizado.");
-            return;
-        }
-
         let finished = 0;
+        let globalInertia = 0;
         let globalPartials = Array.from({ length: k }, () => ({ lat: 0, lon: 0, pop: 0, count: 0 }));
 
         for (let i = 0; i < numWorkers; i++) {
             const kmWorker = new Worker('k-means-worker.js');
-
-            kmWorker.onerror = (err) => {
-                console.error(`Worker #${i} Error:`, err.message, err);
-            };
-
             kmWorker.postMessage({
                 startIdx: i * chunk,
                 endIdx: i === numWorkers - 1 ? currentTotalCities : (i + 1) * chunk,
@@ -366,31 +310,37 @@ const runParallelKMeans = (k, listaCidades) => {
             });
 
             kmWorker.onmessage = (e) => {
-                if (e.data.partials) {
-                    e.data.partials.forEach((p, idx) => {
-                        globalPartials[idx].lat += p.lat;
-                        globalPartials[idx].lon += p.lon;
-                        globalPartials[idx].pop += p.pop;
-                        globalPartials[idx].count += p.count;
-                    });
-                }
+                globalInertia += e.data.localInertia;
+                e.data.partials.forEach((p, idx) => {
+                    globalPartials[idx].lat += p.lat;
+                    globalPartials[idx].lon += p.lon;
+                    globalPartials[idx].pop += p.pop;
+                    globalPartials[idx].count += p.count;
+                });
+                
                 finished++;
                 if (finished === numWorkers) {
-                    const reseedPool = seedCentroidsFromData(k);
-                    let reseedIdx = 0;
-                    const nextCentroids = globalPartials.map(p => {
-                        if (p.count) {
-                            return {
-                                lat: p.lat / p.count,
-                                lon: p.lon / p.count,
-                                pop: p.pop / p.count
-                            };
+                    // Calcular novos centroides
+                    const nextCentroids = globalPartials.map((p, idx) => {
+                        if (p.count > 0) {
+                            return { lat: p.lat / p.count, lon: p.lon / p.count, pop: p.pop / p.count };
                         }
-                        const pick = reseedPool[reseedIdx % reseedPool.length];
-                        reseedIdx++;
-                        return { ...pick };
+                        return currentCentroids[idx]; // Mantém se o grupo ficar vazio
                     });
-                    iterate(nextCentroids, iteration + 1);
+
+                    // Checar Convergência
+                    let shift = 0;
+                    currentCentroids.forEach((c, i) => {
+                        shift += calculateDistance(c, nextCentroids[i]);
+                    });
+
+                    console.log(`Iteração ${iteration}: Inércia = ${globalInertia.toFixed(4)}, Deslocamento = ${shift.toFixed(6)}`);
+
+                    if (shift < CONVERGENCE_THRESHOLD || iteration >= MAX_ITERATIONS) {
+                        renderKMeansFinalResults(k, iteration, globalInertia, shift < CONVERGENCE_THRESHOLD, nextCentroids, listaCidades);
+                    } else {
+                        iterate(nextCentroids, iteration + 1);
+                    }
                 }
             };
         }
@@ -398,8 +348,82 @@ const runParallelKMeans = (k, listaCidades) => {
     iterate(centroids, 1);
 };
 
-//Função para buscar cidades da API e salvar em JSON local, 
-// é opcional para ver como fiz mas não é útil para usar como está atualmente, uma vez que já fiz o processo
+const renderKMeansFinalResults = (k, totalIter, inertia, converged, finalCentroids, listaCidades) => {
+    toggleLoader(false);
+    setButtonsDisabled(false);
+    
+    const resultsDiv = document.getElementById('kmeans-results');
+    if (!resultsDiv) return;
+
+    // Organizar cidades nos grupos finais com seus objetos completos
+    const cityGroups = Array.from({ length: k }, () => []);
+    const dataView = new Float64Array(sharedBuffer);
+
+    for (let i = 0; i < currentTotalCities; i++) {
+        const base = i * 3;
+        const lat = dataView[base];
+        const lon = dataView[base + 1];
+        const pop = dataView[base + 2];
+
+        if (lat === 0 && lon === 0) continue;
+        
+        let minDist = Infinity;
+        let groupIdx = 0;
+        
+        // Objeto para cálculo de distância
+        const currentCityObj = { lat, lon, pop };
+
+        finalCentroids.forEach((c, idx) => {
+            const d = calculateDistance(currentCityObj, c);
+            if (d < minDist) { 
+                minDist = d; 
+                groupIdx = idx; 
+            }
+        });
+
+        // Adicionamos o objeto original da lista para ter acesso ao nome e país
+        const originalCity = listaCidades[i] || { city: `Cidade #${i}`, country: 'N/A' };
+        
+        cityGroups[groupIdx].push({
+            name: originalCity.city,
+            country: originalCity.country,
+            lat: lat.toFixed(2),
+            lon: lon.toFixed(2),
+            pop: pop
+        });
+    }
+
+    resultsDiv.innerHTML = `
+    <div class="metrics-card">
+        <h2>📊 Resultado do Processamento Paralelo</h2>
+        <div class="metrics-grid">
+            <div class="metric-item"><strong>Clusters</strong><span>${k}</span></div>
+            <div class="metric-item"><strong>Iterações</strong><span>${totalIter}</span></div>
+            <div class="metric-item"><strong>Convergência</strong><span>${converged ? 'Sim' : 'Não'}</span></div>
+            <div class="metric-item"><strong>Inércia</strong><span>${inertia.toLocaleString('pt-BR', {maximumFractionDigits: 0})}</span></div>
+        </div>
+        <div class="groups-area">
+            ${cityGroups.map((group, i) => `
+                <div class="group-box">
+                    <strong>Grupo ${i + 1}</strong> (${group.length} cidades)
+                    <div class="city-details-grid" style="margin-top: 10px;">
+                        ${group.slice(0, 50).map(c => `
+                            <div class="city-info-tag" style="background: #fff; border: 1px solid #eee; padding: 5px 10px; border-radius: 8px; margin-bottom: 5px; font-size: 0.8rem;">
+                                <b style="color: #790a83;">${c.name} (${c.country})</b><br>
+                                📍 Lat: ${c.lat} | Lon: ${c.lon} | 👥 Pop: ${formatPopulation(c.pop)}
+                            </div>
+                        `).join('')}
+                        ${group.length > 50 ? `<p>... e mais ${group.length - 50} cidades</p>` : ''}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    </div>
+`;
+};
+
+//Função para buscar cidades da API e salvar em JSON local, é mais para ver como fiz mas não é útil para usar como está atualmente, 
+// uma vez que já fiz o processo e já tenho o arquivo cidades.json salvo localmente.
 const fetchAndSaveCitiesToJson = async () => {
     const apiEndpoint = CONFIG.URL;
     const headers = CONFIG.HEADERS;
@@ -412,7 +436,7 @@ const fetchAndSaveCitiesToJson = async () => {
     try {
         while (currentPage < maxRequests) {
             const offset = currentPage * limit;
-            const url = `${apiEndpoint}?offset=${offset}&limit=${limit}&sort=%2Bname`;
+            const url = `${CONFIG.URL}?offset=${page * CONFIG.LIMIT}&limit=${CONFIG.LIMIT}&sort=-population`;
 
             console.log(`Buscando cidades na página ${currentPage + 1}...`);
 
@@ -480,6 +504,31 @@ window.onclick = (event) => { if (event.target == modal) modal.style.display = "
 document.getElementById('fetch-save-btn')?.addEventListener('click', () => {
     console.log("Iniciando processo de busca e salvamento...");
     fetchAndSaveCitiesToJson(); 
+});
+
+document.getElementById('table-body')?.addEventListener('change', (e) => {
+    if (e.target.classList.contains('city-checkbox')) {
+        const data = e.target.dataset;
+        const cityObj = {
+            id: data.id,
+            name: data.name,
+            country: data.country,
+            lat: parseFloat(data.lat),
+            lon: parseFloat(data.lon),
+            pop: parseInt(data.pop)
+        };
+
+        if (e.target.checked) {
+            // Adiciona se não estiver na lista
+            if (!state.selectedCities.find(c => c.id === cityObj.id)) {
+                state.selectedCities.push(cityObj);
+            }
+        } else {
+            // Remove da lista
+            state.selectedCities = state.selectedCities.filter(c => c.id !== cityObj.id);
+        }
+        console.log("Cidades selecionadas:", state.selectedCities);
+    }
 });
 
 updateApp(0);

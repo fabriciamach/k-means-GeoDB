@@ -13,6 +13,7 @@ self.onmessage = (e) => {
     
     const data = new Float64Array(sharedBuffer);
     
+    let localInertia = 0;
     const partials = centroids.map(() => ({
         lat: 0,
         lon: 0,
@@ -45,6 +46,7 @@ self.onmessage = (e) => {
         });
 
         // Acumula os valores para calcular a nova média
+        localInertia += Math.pow(minDist, 2);
         partials[closestIdx].lat += city.lat;
         partials[closestIdx].lon += city.lon;
         partials[closestIdx].pop += city.pop;
@@ -52,5 +54,5 @@ self.onmessage = (e) => {
     }
 
     // Retorna os resultados parciais 
-    self.postMessage({ partials });
+    self.postMessage({ partials, localInertia });
 };

@@ -169,3 +169,104 @@ th { background-color: #790a83;
     line-height: 1.6;
     font-size: 0.95rem;
 }
+
+/* Container Principal do Relatório */
+.metrics-card {
+    background: #ffffff; /* Fundo branco sólido para contraste total */
+    border: 2px solid #790a83; /* Borda roxa bem definida */
+    border-radius: 16px;
+    padding: 25px;
+    margin-top: 30px;
+    box-shadow: 0 10px 25px rgba(121, 10, 131, 0.1); /* Sombra roxa leve */
+    animation: fadeIn 0.5s ease-out;
+}
+
+.metrics-card h2 {
+    color: #790a83;
+    font-size: 1.6rem;
+    margin-bottom: 25px;
+    text-align: center;
+    border-bottom: 2px solid #f0f0f0;
+    padding-bottom: 10px;
+}
+
+/* Grid de Métricas (Os 4 quadros superiores) */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.metric-item {
+    background: #fcf4fd; /* Roxo ultra claro para o fundo do item */
+    border: 1px solid #e9c9ed;
+    padding: 20px;
+    border-radius: 12px;
+    text-align: center;
+}
+
+.metric-item strong {
+    display: block;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    color: #555; /* Cinza escuro para o rótulo */
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+}
+
+.metric-item span {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: #790a83; /* Valor em roxo destaque */
+}
+
+/* Área dos Grupos (Lista de Cidades abaixo) */
+.groups-area {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.group-box {
+    background: #f8f9fa; /* Cinza bem claro */
+    border-left: 6px solid #790a83; /* Barra lateral roxa grossa */
+    padding: 18px;
+    border-radius: 4px 12px 12px 4px;
+    border-top: 1px solid #eee;
+    border-right: 1px solid #eee;
+    border-bottom: 1px solid #eee;
+}
+
+.group-box strong {
+    color: #790a83;
+    font-size: 1.2rem;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.group-box p {
+    color: #222222 !important; /* Texto das cidades em PRETO para leitura perfeita */
+    font-family: 'Segoe UI', sans-serif;
+    line-height: 1.6;
+    margin: 0;
+    font-size: 0.95rem;
+}
+
+/* Scrollbar para não esticar a página demais */
+.groups-area {
+    max-height: 600px;
+    overflow-y: auto;
+    padding-right: 10px;
+}
+
+.groups-area::-webkit-scrollbar { width: 8px; }
+.groups-area::-webkit-scrollbar-thumb {
+    background: #790a83;
+    border-radius: 10px;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
