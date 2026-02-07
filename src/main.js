@@ -425,55 +425,70 @@ const renderKMeansFinalResults = (k, totalIter, inertia, converged, finalCentroi
 //Função para buscar cidades da API e salvar em JSON local, é mais para ver como fiz mas não é útil para usar como está atualmente, 
 // uma vez que já fiz o processo e já tenho o arquivo cidades.json salvo localmente.
 const fetchAndSaveCitiesToJson = async () => {
-    const apiEndpoint = CONFIG.URL;
-    const headers = CONFIG.HEADERS;
-    const limit = CONFIG.LIMIT; // Número de cidades por requisição
-    const maxRequests = 10; // Limite de requisições para evitar sobrecarga
-
+    const limit = CONFIG.API_PAGE_LIMIT; 
+    const maxPages = 5; // Define quantas páginas você quer baixar (5 páginas = 50 cidades)
     let allCities = [];
-    let currentPage = 0;
+
+    toggleLoader(true);
+    setButtonsDisabled(true);
+    updateStatus('Iniciando coleta massiva...');
 
     try {
-        while (currentPage < maxRequests) {
+        for (let currentPage = 0; currentPage < maxPages; currentPage++) {
             const offset = currentPage * limit;
-            const url = `${CONFIG.URL}?offset=${page * CONFIG.LIMIT}&limit=${CONFIG.LIMIT}&sort=-population`;
+            // Usando a ordenação por população para garantir os melhores dados
+            const url = `${CONFIG.URL}?offset=${offset}&limit=${limit}&sort=-population`;
 
-            console.log(`Buscando cidades na página ${currentPage + 1}...`);
+            updateStatus(`Baixando página ${currentPage + 1} de ${maxPages}...`);
+            console.log(`Solicitando: ${url}`);
 
-            const response = await fetch(url, { headers });
+            const response = await fetch(url, { headers: CONFIG.HEADERS });
 
             if (!response.ok) {
-                console.error(`Erro ao buscar cidades: ${response.statusText}`);
-                break;
+                if (response.status === 429) {
+                    updateStatus('Limite de API atingido. Aguardando...');
+                    await new Promise(r => setTimeout(r, CONFIG.RETRY_429_EXTRA_MS));
+                    currentPage--; 
+                    continue;
+                }
+                throw new Error(`Erro na API: ${response.status}`);
             }
 
-            const data = await response.json();
-            if (data.data && data.data.length > 0) {
-                allCities = allCities.concat(data.data);
+            const result = await response.json();
+            
+            if (result.data && result.data.length > 0) {
+                const normalized = result.data.map((c, idx) => normalizeCity(c, offset + idx));
+                allCities = allCities.concat(normalized);
             } else {
-                console.log('Nenhuma cidade retornada pela API.');
-                break;
+                break; 
             }
 
-            currentPage++;
-            await new Promise(resolve => setTimeout(resolve, CONFIG.RATE_LIMIT_MS)); // Respeitar limite de requisição
+            // Pausa para respeitar o Rate Limit da RapidAPI
+            await new Promise(resolve => setTimeout(resolve, CONFIG.RATE_LIMIT_MS));
         }
 
-        console.log(`Total de cidades buscadas: ${allCities.length}`);
+        if (allCities.length > 0) {
+            const blob = new Blob([JSON.stringify(allCities, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
 
-        // Salvar no JSON
-        const blob = new Blob([JSON.stringify(allCities, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'cidades.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
 
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'cidades.json';
-        a.click();
+            updateStatus(`Sucesso! ${allCities.length} cidades salvas.`);
+            console.log('Arquivo cidades.json gerado com sucesso!');
+        }
 
-        URL.revokeObjectURL(url);
-        console.log('Arquivo cidades.json salvo com sucesso!');
     } catch (error) {
-        console.error('Erro ao buscar ou salvar cidades:', error);
+        console.error('Falha na coleta massiva:', error);
+        updateStatus('Erro na coleta. Verifique o console.');
+    } finally {
+        toggleLoader(false);
+        setButtonsDisabled(false);
     }
 };
 
@@ -529,6 +544,10 @@ document.getElementById('table-body')?.addEventListener('change', (e) => {
         }
         console.log("Cidades selecionadas:", state.selectedCities);
     }
+});
+
+document.getElementById('fetch-save-btn')?.addEventListener('click', () => {
+    fetchAndSaveCitiesToJson(); 
 });
 
 updateApp(0);
